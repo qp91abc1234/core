@@ -11,40 +11,50 @@ import {
   startBatch,
 } from './effect'
 
-/**
- * Incremented every time a reactive change happens
- * This is used to give computed a fast path to avoid re-compute when nothing
- * has changed.
+// The main WeakMap that stores {target -> key -> dep} connections.
+// Conceptually, it's easier to think of a dependency as a Dep class
+// which maintains a Set of subscribers, but we simply store them as
+// raw Maps to reduce memory overhead.
+type KeyToDepMap = Map<any, Dep>
+
+export const ITERATE_KEY: unique symbol = Symbol(
+  __DEV__ ? 'Object iterate' : '',
+)
+export const MAP_KEY_ITERATE_KEY: unique symbol = Symbol(
+  __DEV__ ? 'Map keys iterate' : '',
+)
+export const ARRAY_ITERATE_KEY: unique symbol = Symbol(
+  __DEV__ ? 'Array iterate' : '',
+)
+
+/** 全局响应式变量更新次数
+ * 任一响应式变量改变，该值就 + 1
+ * 一种快捷方式避免计算属性重新计算
  */
 export let globalVersion = 0
 
-/**
- * Represents a link between a source (Dep) and a subscriber (Effect or Computed).
- * Deps and subs have a many-to-many relationship - each link between a
- * dep and a sub is represented by a Link instance.
- *
- * A Link is also a node in two doubly-linked lists - one for the associated
- * sub to track all its deps, and one for the associated dep to track all its
- * subs.
- *
- * @internal
+/** 订阅关系节点
+ * 1.记录订阅关系
+ * 2.作为发布者对应的订阅关系链表中的节点
+ * 3.作为订阅者对应的订阅关系链表中的节点
  */
 export class Link {
-  /**
-   * - Before each effect run, all previous dep links' version are reset to -1
-   * - During the run, a link's version is synced with the source dep on access
-   * - After the run, links with version -1 (that were never used) are cleaned
-   *   up
+  /** 用于订阅者清理订阅关系
    */
   version: number
 
-  /**
-   * Pointers for doubly-linked lists
+  /** 订阅者链表中的指针
    */
   nextDep?: Link
   prevDep?: Link
+
+  /** 发布者链表中的指针
+   */
   nextSub?: Link
   prevSub?: Link
+
+  /** 记录之前激活的订阅关系，用于回退
+   */
   prevActiveLink?: Link
 
   constructor(
@@ -61,43 +71,42 @@ export class Link {
   }
 }
 
-/**
- * @internal
+/** 发布者
+ * 与响应式变量一一对应
+ * 用于建立订阅关系
  */
 export class Dep {
+  /** 响应式变量更新的次数
+   */
   version = 0
-  /**
-   * Link between this dep and the current active effect
+
+  /** 当前激活的订阅关系节点
+   * 用于避免重复建立订阅关系
    */
   activeLink?: Link = undefined
 
-  /**
-   * Doubly linked list representing the subscribing effects (tail)
+  /** 记录发布者对应订阅关系链表的尾节点
    */
   subs?: Link = undefined
 
-  /**
-   * Doubly linked list representing the subscribing effects (head)
-   * DEV only, for invoking onTrigger hooks in correct order
+  /** 记录发布者对应订阅关系链表的投节点
    */
   subsHead?: Link
 
-  /**
-   * For object property deps cleanup
+  /** 发布者所在容器 & 存储发布者用到的 key
+   * 订阅关系清零时用于清理发布者
    */
   map?: KeyToDepMap = undefined
   key?: unknown = undefined
 
-  /**
-   * Subscriber counter
+  /** 该发布者的订阅关系数量
    */
   sc: number = 0
 
-  /**
-   * @internal
+  /** 等价于 ReactiveFlags.SKIP
+   * 阻止发布者的响应式转换
    */
   readonly __v_skip = true
-  // TODO isolatedDeclarations ReactiveFlags.SKIP
 
   constructor(public computed?: ComputedRefImpl | undefined) {
     if (__DEV__) {
@@ -111,10 +120,11 @@ export class Dep {
     }
 
     let link = this.activeLink
+    // 第一次与当前激活的订阅者之间建立订阅关系
     if (link === undefined || link.sub !== activeSub) {
       link = this.activeLink = new Link(activeSub, this)
 
-      // add the link to the activeEffect as a dep (as tail)
+      // 将订阅关系节点加入到订阅者的订阅关系链表尾部
       if (!activeSub.deps) {
         activeSub.deps = activeSub.depsTail = link
       } else {
@@ -128,9 +138,7 @@ export class Dep {
       // reused from last run - already a sub, just sync version
       link.version = this.version
 
-      // If this dep has a next, it means it's not at the tail - move it to the
-      // tail. This ensures the effect's dep list is in the order they are
-      // accessed during evaluation.
+      // 将订阅关系节点移到发布者的订阅关系链表尾部
       if (link.nextDep) {
         const next = link.nextDep
         next.prevDep = link.prevDep
@@ -190,6 +198,7 @@ export class Dep {
           }
         }
       }
+      // 发布者通知订阅关系中的订阅者
       for (let link = this.subs; link; link = link.prevSub) {
         if (link.sub.notify()) {
           // if notify() returns `true`, this is a computed. Also call notify
@@ -204,6 +213,8 @@ export class Dep {
   }
 }
 
+/** 从发布者的角度添加订阅关系节点
+ */
 function addSub(link: Link) {
   link.dep.sc++
   if (link.sub.flags & EffectFlags.TRACKING) {
@@ -217,6 +228,7 @@ function addSub(link: Link) {
       }
     }
 
+    // 将订阅关系节点加入到发布者的订阅关系链表尾部
     const currentTail = link.dep.subs
     if (currentTail !== link) {
       link.prevSub = currentTail
@@ -231,33 +243,11 @@ function addSub(link: Link) {
   }
 }
 
-// The main WeakMap that stores {target -> key -> dep} connections.
-// Conceptually, it's easier to think of a dependency as a Dep class
-// which maintains a Set of subscribers, but we simply store them as
-// raw Maps to reduce memory overhead.
-type KeyToDepMap = Map<any, Dep>
-
+/** 存放响应式变量一一对应的发布者
+ */
 export const targetMap: WeakMap<object, KeyToDepMap> = new WeakMap()
 
-export const ITERATE_KEY: unique symbol = Symbol(
-  __DEV__ ? 'Object iterate' : '',
-)
-export const MAP_KEY_ITERATE_KEY: unique symbol = Symbol(
-  __DEV__ ? 'Map keys iterate' : '',
-)
-export const ARRAY_ITERATE_KEY: unique symbol = Symbol(
-  __DEV__ ? 'Array iterate' : '',
-)
-
-/**
- * Tracks access to a reactive property.
- *
- * This will check which effect is running at the moment and record it as dep
- * which records all effects that depend on the reactive property.
- *
- * @param target - Object holding the reactive property.
- * @param type - Defines the type of access to the reactive property.
- * @param key - Identifier of the reactive property to track.
+/** 创建发布者建立订阅关系
  */
 export function track(target: object, type: TrackOpTypes, key: unknown): void {
   if (shouldTrack && activeSub) {
@@ -283,13 +273,7 @@ export function track(target: object, type: TrackOpTypes, key: unknown): void {
   }
 }
 
-/**
- * Finds all deps associated with the target (or a specific property) and
- * triggers the effects stored within.
- *
- * @param target - The reactive object.
- * @param type - Defines the type of the operation that needs to trigger effects.
- * @param key - Can be used to target a specific reactive property in the target object.
+/** 通知所有订阅者
  */
 export function trigger(
   target: object,
@@ -301,11 +285,13 @@ export function trigger(
 ): void {
   const depsMap = targetMap.get(target)
   if (!depsMap) {
-    // never been tracked
+    // 即使没有建立订阅关系，该变量也会更新
     globalVersion++
     return
   }
 
+  /** 驱动发布者去通知订阅者
+   */
   const run = (dep: Dep | undefined) => {
     if (dep) {
       if (__DEV__) {
@@ -388,6 +374,8 @@ export function trigger(
   endBatch()
 }
 
+/** 获取响应式变量对应的发布者
+ */
 export function getDepFromReactive(
   object: any,
   key: string | number | symbol,

@@ -36,22 +36,6 @@ export interface ReactiveEffectRunner<T = any> {
   effect: ReactiveEffect
 }
 
-export let activeSub: Subscriber | undefined
-
-export enum EffectFlags {
-  /**
-   * ReactiveEffect only
-   */
-  ACTIVE = 1 << 0,
-  RUNNING = 1 << 1,
-  TRACKING = 1 << 2,
-  NOTIFIED = 1 << 3,
-  DIRTY = 1 << 4,
-  ALLOW_RECURSE = 1 << 5,
-  PAUSED = 1 << 6,
-  EVALUATED = 1 << 7,
-}
-
 /**
  * Subscriber is a type that tracks (or subscribes to) a list of deps.
  */
@@ -82,29 +66,55 @@ export interface Subscriber extends DebuggerOptions {
   notify(): true | void
 }
 
+export interface ReactiveEffectRunner<T = any> {
+  (): T
+  effect: ReactiveEffect
+}
+
+/** 订阅者状态
+ */
+export enum EffectFlags {
+  /**
+   * ReactiveEffect only
+   */
+  ACTIVE = 1 << 0, // 副作用功能是否开启
+  RUNNING = 1 << 1, // 正在执行副作用函数
+  TRACKING = 1 << 2,
+  NOTIFIED = 1 << 3, // 避免重复被发布者通知
+  DIRTY = 1 << 4, // 是否有发布者发生了变更
+  ALLOW_RECURSE = 1 << 5, // 是否允许递归执行副作用函数
+  PAUSED = 1 << 6, // 暂停状态
+  EVALUATED = 1 << 7,
+}
+
+/** 当前激活的订阅者
+ */
+export let activeSub: Subscriber | undefined
+
+/** 暂停的响应式副作用队列
+ */
 const pausedQueueEffects = new WeakSet<ReactiveEffect>()
 
+/** 响应式副作用
+ * 订阅者的一种，具有响应式功能的副作用函数对象
+ */
 export class ReactiveEffect<T = any>
   implements Subscriber, ReactiveEffectOptions
 {
-  /**
-   * @internal
+  /** 订阅者对应订阅关系链表的头部
    */
   deps?: Link = undefined
-  /**
-   * @internal
+  /** 订阅者对应订阅关系链表的尾部
    */
   depsTail?: Link = undefined
-  /**
-   * @internal
+  /** 订阅者状态
    */
   flags: EffectFlags = EffectFlags.ACTIVE | EffectFlags.TRACKING
-  /**
-   * @internal
+  /** 串联发布者对应的所有订阅者
+   * 用于批量执行副作用函数
    */
   next?: Subscriber = undefined
-  /**
-   * @internal
+  /** 副作用清理函数
    */
   cleanup?: () => void = undefined
 
@@ -119,10 +129,16 @@ export class ReactiveEffect<T = any>
     }
   }
 
+  /** 暂停
+   * 进入暂停状态后，响应式变量变更，响应式副作用会加入暂停队列
+   */
   pause(): void {
     this.flags |= EffectFlags.PAUSED
   }
 
+  /** 取消暂停
+   * 取消暂停后，若暂停队列中存在该响应式副作用，则它会立即执行
+   */
   resume(): void {
     if (this.flags & EffectFlags.PAUSED) {
       this.flags &= ~EffectFlags.PAUSED
@@ -133,8 +149,7 @@ export class ReactiveEffect<T = any>
     }
   }
 
-  /**
-   * @internal
+  /** 通知响应式副作用重新执行
    */
   notify(): void {
     if (
@@ -148,6 +163,8 @@ export class ReactiveEffect<T = any>
     }
   }
 
+  /** 副作用函数的执行
+   */
   run(): T {
     // TODO cleanupEffect
 
@@ -180,6 +197,9 @@ export class ReactiveEffect<T = any>
     }
   }
 
+  /** 关停副作用功能
+   * 双向清理订阅关系
+   */
   stop(): void {
     if (this.flags & EffectFlags.ACTIVE) {
       for (let link = this.deps; link; link = link.nextDep) {
@@ -192,6 +212,8 @@ export class ReactiveEffect<T = any>
     }
   }
 
+  /** 触发副作用函数重新执行
+   */
   trigger(): void {
     if (this.flags & EffectFlags.PAUSED) {
       pausedQueueEffects.add(this)
@@ -216,7 +238,7 @@ export class ReactiveEffect<T = any>
   }
 }
 
-/**
+/** 被屏蔽的调试函数
  * For debugging
  */
 // function printDeps(sub: Subscriber) {
@@ -298,6 +320,9 @@ export function endBatch(): void {
   if (error) throw error
 }
 
+/** 副作用前置函数
+ * 为订阅关系链表中的每个节点设置版本号为 -1，并存储前一个活跃的订阅关系节点
+ */
 function prepareDeps(sub: Subscriber) {
   // Prepare deps for tracking, starting from the head
   for (let link = sub.deps; link; link = link.nextDep) {
@@ -310,6 +335,9 @@ function prepareDeps(sub: Subscriber) {
   }
 }
 
+/** 副作用后置函数
+ * 调整订阅者对应的订阅关系链表，清理未使用的订阅关系节点
+ */
 function cleanupDeps(sub: Subscriber) {
   // Cleanup unsued deps
   let head
@@ -339,6 +367,8 @@ function cleanupDeps(sub: Subscriber) {
   sub.depsTail = tail
 }
 
+/** 检测发布者是否有变更
+ */
 function isDirty(sub: Subscriber): boolean {
   for (let link = sub.deps; link; link = link.nextDep) {
     if (
@@ -418,6 +448,8 @@ export function refreshComputed(computed: ComputedRefImpl): undefined {
   }
 }
 
+/** 从发布者视角对应的订阅关系链表中移除订阅关系节点
+ */
 function removeSub(link: Link, soft = false) {
   const { dep, prevSub, nextSub } = link
   if (prevSub) {
@@ -449,6 +481,7 @@ function removeSub(link: Link, soft = false) {
     }
   }
 
+  // 发布者若无订阅者则发布者会被移除
   if (!soft && !--dep.sc && dep.map) {
     // #11979
     // property dep no longer has effect subscribers, delete it
@@ -458,6 +491,8 @@ function removeSub(link: Link, soft = false) {
   }
 }
 
+/** 从订阅者视角对应的订阅关系链表中移除订阅关系节点
+ */
 function removeDep(link: Link) {
   const { prevDep, nextDep } = link
   if (prevDep) {
@@ -470,11 +505,9 @@ function removeDep(link: Link) {
   }
 }
 
-export interface ReactiveEffectRunner<T = any> {
-  (): T
-  effect: ReactiveEffect
-}
-
+/** 副作用包装函数
+ * 将普通函数转变为具有响应式功能的副作用函数
+ */
 export function effect<T = any>(
   fn: () => T,
   options?: ReactiveEffectOptions,
@@ -498,56 +531,41 @@ export function effect<T = any>(
   return runner
 }
 
-/**
- * Stops the effect associated with the given runner.
- *
- * @param runner - Association with the effect to stop tracking.
+/** 停止副作用功能
  */
 export function stop(runner: ReactiveEffectRunner): void {
   runner.effect.stop()
 }
 
-/**
- * @internal
+/** 是否允许建立订阅关系
  */
 export let shouldTrack = true
 const trackStack: boolean[] = []
 
-/**
- * Temporarily pauses tracking.
+/** 暂停建立订阅关系
  */
 export function pauseTracking(): void {
   trackStack.push(shouldTrack)
   shouldTrack = false
 }
 
-/**
- * Re-enables effect tracking (if it was paused).
+/** 恢复建立订阅关系
  */
 export function enableTracking(): void {
   trackStack.push(shouldTrack)
   shouldTrack = true
 }
 
-/**
- * Resets the previous global effect tracking state.
+/** 重置回上一次的状态
  */
 export function resetTracking(): void {
   const last = trackStack.pop()
   shouldTrack = last === undefined ? true : last
 }
 
-/**
- * Registers a cleanup function for the current active effect.
- * The cleanup function is called right before the next effect run, or when the
- * effect is stopped.
- *
- * Throws a warning if there is no current active effect. The warning can be
- * suppressed by passing `true` to the second argument.
- *
- * @param fn - the cleanup function to be registered
- * @param failSilently - if `true`, will not throw warning when called without
- * an active effect.
+/** 注册副作用清理函数
+ * 给当前激活的订阅者注册副作用清理函数
+ * 该函数会在下一次副作用执行前调用，或者在副作用停止时调用
  */
 export function onEffectCleanup(fn: () => void, failSilently = false): void {
   if (activeSub instanceof ReactiveEffect) {
@@ -560,6 +578,8 @@ export function onEffectCleanup(fn: () => void, failSilently = false): void {
   }
 }
 
+/** 执行副作用清理函数
+ */
 function cleanupEffect(e: ReactiveEffect) {
   const { cleanup } = e
   e.cleanup = undefined
