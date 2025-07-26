@@ -259,6 +259,8 @@ let batchDepth = 0
 let batchedSub: Subscriber | undefined
 let batchedComputed: Subscriber | undefined
 
+/** 将订阅者加入批处理链表中
+ */
 export function batch(sub: Subscriber, isComputed = false): void {
   sub.flags |= EffectFlags.NOTIFIED
   if (isComputed) {
@@ -270,16 +272,14 @@ export function batch(sub: Subscriber, isComputed = false): void {
   batchedSub = sub
 }
 
-/**
- * @internal
+/** 开启批处理周期
  */
 export function startBatch(): void {
   batchDepth++
 }
 
-/**
- * Run batched effects when all batches have ended
- * @internal
+/** 结束批处理周期
+ * 通知该批次内的订阅者重新执行副作用函数
  */
 export function endBatch(): void {
   if (--batchDepth > 0) {
