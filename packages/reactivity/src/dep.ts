@@ -222,6 +222,7 @@ function addSub(link: Link) {
     // computed getting its first subscriber
     // enable tracking + lazily subscribe to all its deps
     if (computed && !link.dep.subs) {
+      // 此处针对的是计算属性之前在副作用函数外执行过的情况
       computed.flags |= EffectFlags.TRACKING | EffectFlags.DIRTY
       for (let l = computed.deps; l; l = l.nextDep) {
         addSub(l)

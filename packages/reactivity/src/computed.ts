@@ -45,12 +45,10 @@ export interface WritableComputedOptions<T, S = T> {
  * the main vue package
  */
 export class ComputedRefImpl<T = any> implements Subscriber {
-  /**
-   * @internal
+  /** 计算结果值
    */
   _value: any = undefined
-  /**
-   * @internal
+  /** 作为响应式变量时，一一对应的发布者
    */
   readonly dep: Dep = new Dep(this)
   /**
@@ -63,29 +61,26 @@ export class ComputedRefImpl<T = any> implements Subscriber {
    */
   readonly __v_isReadonly: boolean
   // TODO isolatedDeclarations ReactiveFlags.IS_READONLY
-  // A computed is also a subscriber that tracks other deps
-  /**
-   * @internal
+
+  // 计算属性同时也是一个订阅者，订阅计算函数内响应式变量对应的发布者
+  /** 订阅者对应的订阅关系链表头部
    */
   deps?: Link = undefined
-  /**
-   * @internal
+  /** 订阅者对应的订阅关系链表尾部
    */
   depsTail?: Link = undefined
-  /**
-   * @internal
+  /** 订阅者状态
    */
   flags: EffectFlags = EffectFlags.DIRTY
-  /**
-   * @internal
+  /** 快捷判断是否需要重新计算
    */
   globalVersion: number = globalVersion - 1
   /**
    * @internal
    */
   isSSR: boolean
-  /**
-   * @internal
+  /** 串联发布者对应的所有订阅者
+   * 用于批量执行副作用函数
    */
   next?: Subscriber = undefined
 
@@ -95,7 +90,6 @@ export class ComputedRefImpl<T = any> implements Subscriber {
   onTrack?: (event: DebuggerEvent) => void
   // dev only
   onTrigger?: (event: DebuggerEvent) => void
-
   /**
    * Dev only
    * @internal
@@ -111,8 +105,7 @@ export class ComputedRefImpl<T = any> implements Subscriber {
     this.isSSR = isSSR
   }
 
-  /**
-   * @internal
+  /** 通知需要重新计算
    */
   notify(): true | void {
     this.flags |= EffectFlags.DIRTY

@@ -79,12 +79,12 @@ export enum EffectFlags {
    */
   ACTIVE = 1 << 0, // 副作用功能是否开启
   RUNNING = 1 << 1, // 正在执行副作用函数
-  TRACKING = 1 << 2,
+  TRACKING = 1 << 2, // 能否将订阅关系节点加入订阅者对应的订阅关系链表
   NOTIFIED = 1 << 3, // 避免重复被发布者通知
   DIRTY = 1 << 4, // 是否有发布者发生了变更
   ALLOW_RECURSE = 1 << 5, // 是否允许递归执行副作用函数
   PAUSED = 1 << 6, // 暂停状态
-  EVALUATED = 1 << 7,
+  EVALUATED = 1 << 7, // 计算属性是否执行过
 }
 
 /** 当前激活的订阅者
