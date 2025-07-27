@@ -3,45 +3,41 @@ import { warn } from './warning'
 
 export let activeEffectScope: EffectScope | undefined
 
+/** 副作用作用域
+ * 副作用管理容器
+ */
 export class EffectScope {
-  /**
-   * @internal
+  /** 是否激活
    */
   private _active = true
-  /**
-   * @internal track `on` calls, allow `on` call multiple times
+  /** 分离模式下，作用域是否激活的标志
    */
   private _on = 0
-  /**
-   * @internal
+  /** 作用域内的响应式副作用
    */
   effects: ReactiveEffect[] = []
-  /**
-   * @internal
+  /** 清理函数
    */
   cleanups: (() => void)[] = []
 
+  /** 是否暂停
+   */
   private _isPaused = false
 
-  /**
-   * only assigned by undetached scope
-   * @internal
+  /** 父作用域
+   * 仅在非分离模式下存在
    */
   parent: EffectScope | undefined
-  /**
-   * record undetached scopes
-   * @internal
+  /** 子作用域
    */
   scopes: EffectScope[] | undefined
-  /**
-   * track a child scope's index in its parent's scopes array for optimized
-   * removal
-   * @internal
+  /** 非分离模式下在父作用域中的索引
    */
   private index: number | undefined
 
   constructor(public detached = false) {
     this.parent = activeEffectScope
+    // 非分离模式存在父子作用域
     if (!detached && activeEffectScope) {
       this.index =
         (activeEffectScope.scopes || (activeEffectScope.scopes = [])).push(
@@ -50,10 +46,14 @@ export class EffectScope {
     }
   }
 
+  /** 作用域是否激活
+   */
   get active(): boolean {
     return this._active
   }
 
+  /** 暂停作用域内的子作用域以及副作用
+   */
   pause(): void {
     if (this._active) {
       this._isPaused = true
@@ -69,8 +69,7 @@ export class EffectScope {
     }
   }
 
-  /**
-   * Resumes the effect scope, including all child scopes and effects.
+  /** 恢复作用域内的子作用域以及副作用
    */
   resume(): void {
     if (this._active) {
@@ -89,6 +88,9 @@ export class EffectScope {
     }
   }
 
+  /** 作用域运行函数
+   * 该函数内创建的作用域以及副作用会被加入管理
+   */
   run<T>(fn: () => T): T | undefined {
     if (this._active) {
       const currentEffectScope = activeEffectScope
@@ -104,9 +106,9 @@ export class EffectScope {
   }
 
   prevScope: EffectScope | undefined
-  /**
-   * This should only be called on non-detached scopes
-   * @internal
+
+  /** 手动激活作用域
+   * 仅用于分离模式的作用域
    */
   on(): void {
     if (++this._on === 1) {
@@ -115,9 +117,8 @@ export class EffectScope {
     }
   }
 
-  /**
-   * This should only be called on non-detached scopes
-   * @internal
+  /** 手动取消激活作用域
+   * 仅用于分离模式的作用域
    */
   off(): void {
     if (this._on > 0 && --this._on === 0) {
@@ -126,6 +127,8 @@ export class EffectScope {
     }
   }
 
+  /** 作用域停用
+   */
   stop(fromParent?: boolean): void {
     if (this._active) {
       this._active = false
@@ -147,7 +150,7 @@ export class EffectScope {
         this.scopes.length = 0
       }
 
-      // nested scope, dereference from parent to avoid memory leaks
+      // 非分离模式，stop 后会从父作用域移除
       if (!this.detached && this.parent && !fromParent) {
         // optimized O(1) removal
         const last = this.parent.scopes!.pop()
@@ -161,34 +164,19 @@ export class EffectScope {
   }
 }
 
-/**
- * Creates an effect scope object which can capture the reactive effects (i.e.
- * computed and watchers) created within it so that these effects can be
- * disposed together. For detailed use cases of this API, please consult its
- * corresponding {@link https://github.com/vuejs/rfcs/blob/master/active-rfcs/0041-reactivity-effect-scope.md | RFC}.
- *
- * @param detached - Can be used to create a "detached" effect scope.
- * @see {@link https://vuejs.org/api/reactivity-advanced.html#effectscope}
+/** 创建副作用作用域
  */
 export function effectScope(detached?: boolean): EffectScope {
   return new EffectScope(detached)
 }
 
-/**
- * Returns the current active effect scope if there is one.
- *
- * @see {@link https://vuejs.org/api/reactivity-advanced.html#getcurrentscope}
+/** 获取当前激活的副作用作用域
  */
 export function getCurrentScope(): EffectScope | undefined {
   return activeEffectScope
 }
 
-/**
- * Registers a dispose callback on the current active effect scope. The
- * callback will be invoked when the associated effect scope is stopped.
- *
- * @param fn - The callback function to attach to the scope's cleanup.
- * @see {@link https://vuejs.org/api/reactivity-advanced.html#onscopedispose}
+/** 注册 cleanup 函数
  */
 export function onScopeDispose(fn: () => void, failSilently = false): void {
   if (activeEffectScope) {
