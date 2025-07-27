@@ -78,16 +78,16 @@ export enum EffectFlags {
    * ReactiveEffect only
    */
   ACTIVE = 1 << 0, // 副作用功能是否开启
-  RUNNING = 1 << 1, // 正在执行副作用函数
-  TRACKING = 1 << 2, // 能否将订阅关系节点加入订阅者对应的订阅关系链表
+  RUNNING = 1 << 1, // 正在执行副作用 | 正在执行计算函数
+  TRACKING = 1 << 2, // 能否将订阅关系节点加入发布者对应的订阅关系链表
   NOTIFIED = 1 << 3, // 避免重复被发布者通知
-  DIRTY = 1 << 4, // 是否有发布者发生了变更
+  DIRTY = 1 << 4, // 是否有发布者发生了改变
   ALLOW_RECURSE = 1 << 5, // 是否允许递归执行副作用函数
-  PAUSED = 1 << 6, // 暂停状态
+  PAUSED = 1 << 6, // 响应式副作用是否暂停
   EVALUATED = 1 << 7, // 计算属性是否执行过
 }
 
-/** 当前激活的订阅者
+/** 当前激活的订阅者（响应式副作用/计算属性）
  */
 export let activeSub: Subscriber | undefined
 
@@ -96,7 +96,7 @@ export let activeSub: Subscriber | undefined
 const pausedQueueEffects = new WeakSet<ReactiveEffect>()
 
 /** 响应式副作用
- * 订阅者的一种，具有响应式功能的副作用函数对象
+ * 订阅者的一种，具有响应式副作用功能的对象
  */
 export class ReactiveEffect<T = any>
   implements Subscriber, ReactiveEffectOptions
@@ -107,11 +107,11 @@ export class ReactiveEffect<T = any>
   /** 订阅者对应订阅关系链表的尾部
    */
   depsTail?: Link = undefined
-  /** 订阅者状态
+  /** 订阅者当前状态
    */
   flags: EffectFlags = EffectFlags.ACTIVE | EffectFlags.TRACKING
   /** 串联发布者对应的所有订阅者
-   * 用于批量执行副作用函数
+   * 用于批量执行订阅者对应的回调
    */
   next?: Subscriber = undefined
   /** 副作用清理函数
@@ -320,7 +320,7 @@ export function endBatch(): void {
   if (error) throw error
 }
 
-/** 副作用前置函数
+/** 预处理发布者
  * 为订阅关系链表中的每个节点设置版本号为 -1，并存储前一个活跃的订阅关系节点
  */
 function prepareDeps(sub: Subscriber) {
@@ -335,7 +335,7 @@ function prepareDeps(sub: Subscriber) {
   }
 }
 
-/** 副作用后置函数
+/** 后处理发布者
  * 调整订阅者对应的订阅关系链表，清理未使用的订阅关系节点
  */
 function cleanupDeps(sub: Subscriber) {
@@ -373,7 +373,7 @@ function isDirty(sub: Subscriber): boolean {
   for (let link = sub.deps; link; link = link.nextDep) {
     if (
       link.dep.version !== link.version ||
-      (link.dep.computed &&
+      (link.dep.computed && // 发布者为计算属性时，检测是否有变更
         (refreshComputed(link.dep.computed) ||
           link.dep.version !== link.version))
     ) {
@@ -388,9 +388,7 @@ function isDirty(sub: Subscriber): boolean {
   return false
 }
 
-/**
- * Returning false indicates the refresh failed
- * @internal
+/** 计算属性值更新函数
  */
 export function refreshComputed(computed: ComputedRefImpl): undefined {
   if (

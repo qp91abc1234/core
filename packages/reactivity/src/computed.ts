@@ -49,6 +49,7 @@ export class ComputedRefImpl<T = any> implements Subscriber {
    */
   _value: any = undefined
   /** 作为响应式变量时，一一对应的发布者
+   * 用于通知外层的订阅者
    */
   readonly dep: Dep = new Dep(this)
   /**
@@ -69,7 +70,7 @@ export class ComputedRefImpl<T = any> implements Subscriber {
   /** 订阅者对应的订阅关系链表尾部
    */
   depsTail?: Link = undefined
-  /** 订阅者状态
+  /** 订阅者当前状态
    */
   flags: EffectFlags = EffectFlags.DIRTY
   /** 快捷判断是否需要重新计算
@@ -80,7 +81,7 @@ export class ComputedRefImpl<T = any> implements Subscriber {
    */
   isSSR: boolean
   /** 串联发布者对应的所有订阅者
-   * 用于批量执行副作用函数
+   * 用于批量执行订阅者对应的回调
    */
   next?: Subscriber = undefined
 

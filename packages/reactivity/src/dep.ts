@@ -43,12 +43,12 @@ export class Link {
    */
   version: number
 
-  /** 订阅者链表中的指针
+  /** 订阅者对应的订阅关系链表中的指针
    */
   nextDep?: Link
   prevDep?: Link
 
-  /** 发布者链表中的指针
+  /** 发布者对应的订阅关系链表中的指针
    */
   nextSub?: Link
   prevSub?: Link
@@ -99,7 +99,7 @@ export class Dep {
   map?: KeyToDepMap = undefined
   key?: unknown = undefined
 
-  /** 该发布者的订阅关系数量
+  /** 该发布者被订阅的次数
    */
   sc: number = 0
 
@@ -114,6 +114,8 @@ export class Dep {
     }
   }
 
+  /** 建立 or 更新订阅关系
+   */
   track(debugInfo?: DebuggerEventExtraInfo): Link | undefined {
     if (!activeSub || !shouldTrack || activeSub === this.computed) {
       return
@@ -178,6 +180,8 @@ export class Dep {
     this.notify(debugInfo)
   }
 
+  /** 通知订阅者
+   */
   notify(debugInfo?: DebuggerEventExtraInfo): void {
     startBatch()
     try {
@@ -213,7 +217,7 @@ export class Dep {
   }
 }
 
-/** 从发布者的角度添加订阅关系节点
+/** 将订阅关系节点加入到发布者的订阅关系链表尾部
  */
 function addSub(link: Link) {
   link.dep.sc++
@@ -222,7 +226,7 @@ function addSub(link: Link) {
     // computed getting its first subscriber
     // enable tracking + lazily subscribe to all its deps
     if (computed && !link.dep.subs) {
-      // 此处针对的是计算属性之前在副作用函数外执行过的情况
+      // 此处存在针对计算属性之前在副作用函数外执行过的情况
       computed.flags |= EffectFlags.TRACKING | EffectFlags.DIRTY
       for (let l = computed.deps; l; l = l.nextDep) {
         addSub(l)
@@ -248,7 +252,7 @@ function addSub(link: Link) {
  */
 export const targetMap: WeakMap<object, KeyToDepMap> = new WeakMap()
 
-/** 创建发布者建立订阅关系
+/** 创建发布者 & 建立订阅关系
  */
 export function track(target: object, type: TrackOpTypes, key: unknown): void {
   if (shouldTrack && activeSub) {
