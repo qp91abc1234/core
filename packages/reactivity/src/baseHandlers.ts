@@ -27,6 +27,8 @@ import { warn } from './warning'
 
 const isNonTrackableKeys = /*@__PURE__*/ makeMap(`__proto__,__v_isRef,__isVue`)
 
+/** 内置 symbol 变量集合
+ */
 const builtInSymbols = new Set(
   /*@__PURE__*/
   Object.getOwnPropertyNames(Symbol)
@@ -86,6 +88,7 @@ class BaseReactiveHandler implements ProxyHandler<Target> {
 
     const targetIsArray = isArray(target)
 
+    // 返回数组操作函数的包装
     if (!isReadonly) {
       let fn: Function | undefined
       if (targetIsArray && (fn = arrayInstrumentations[key])) {
@@ -117,11 +120,13 @@ class BaseReactiveHandler implements ProxyHandler<Target> {
       return res
     }
 
+    // 属性值是 ref 变量的情况
     if (isRef(res)) {
       // ref unwrapping - skip unwrap for Array + integer key.
       return targetIsArray && isIntegerKey(key) ? res : res.value
     }
 
+    // 递归转变为响应式
     if (isObject(res)) {
       // Convert returned value into a proxy as well. we do the isObject check
       // here to avoid invalid value warning. Also need to lazy access readonly
