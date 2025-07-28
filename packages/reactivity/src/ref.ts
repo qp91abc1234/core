@@ -34,23 +34,93 @@ export interface Ref<T = any, S = T> {
   [RefSymbol]: true
 }
 
+declare const ShallowRefMarker: unique symbol
+
+export type ShallowRef<T = any, S = T> = Ref<T, S> & {
+  [ShallowRefMarker]?: true
+}
+
+export type MaybeRef<T = any> =
+  | T
+  | Ref<T>
+  | ShallowRef<T>
+  | WritableComputedRef<T>
+
+export type MaybeRefOrGetter<T = any> = MaybeRef<T> | ComputedRef<T> | (() => T)
+
+export type CustomRefFactory<T> = (
+  track: () => void,
+  trigger: () => void,
+) => {
+  get: () => T
+  set: (value: T) => void
+}
+
+export type ToRefs<T = any> = {
+  [K in keyof T]: ToRef<T[K]>
+}
+
+export type ToRef<T> = IfAny<T, Ref<T>, [T] extends [Ref] ? T : Ref<T>>
+
 /**
- * Checks if a value is a ref object.
+ * This is a special exported interface for other packages to declare
+ * additional types that should bail out for ref unwrapping. For example
+ * \@vue/runtime-dom can declare it like so in its d.ts:
  *
- * @param r - The value to inspect.
- * @see {@link https://vuejs.org/api/reactivity-utilities.html#isref}
+ * ``` ts
+ * declare module '@vue/reactivity' {
+ *   export interface RefUnwrapBailTypes {
+ *     runtimeDOMBailTypes: Node | Window
+ *   }
+ * }
+ * ```
+ */
+export interface RefUnwrapBailTypes {}
+
+export type ShallowUnwrapRef<T> = {
+  [K in keyof T]: DistributeRef<T[K]>
+}
+
+type DistributeRef<T> = T extends Ref<infer V, unknown> ? V : T
+
+export type UnwrapRef<T> =
+  T extends ShallowRef<infer V, unknown>
+    ? V
+    : T extends Ref<infer V, unknown>
+      ? UnwrapRefSimple<V>
+      : UnwrapRefSimple<T>
+
+export type UnwrapRefSimple<T> = T extends
+  | Builtin
+  | Ref
+  | RefUnwrapBailTypes[keyof RefUnwrapBailTypes]
+  | { [RawSymbol]?: true }
+  ? T
+  : T extends Map<infer K, infer V>
+    ? Map<K, UnwrapRefSimple<V>> & UnwrapRef<Omit<T, keyof Map<any, any>>>
+    : T extends WeakMap<infer K, infer V>
+      ? WeakMap<K, UnwrapRefSimple<V>> &
+          UnwrapRef<Omit<T, keyof WeakMap<any, any>>>
+      : T extends Set<infer V>
+        ? Set<UnwrapRefSimple<V>> & UnwrapRef<Omit<T, keyof Set<any>>>
+        : T extends WeakSet<infer V>
+          ? WeakSet<UnwrapRefSimple<V>> & UnwrapRef<Omit<T, keyof WeakSet<any>>>
+          : T extends ReadonlyArray<any>
+            ? { [K in keyof T]: UnwrapRefSimple<T[K]> }
+            : T extends object & { [ShallowReactiveMarker]?: never }
+              ? {
+                  [P in keyof T]: P extends symbol ? T[P] : UnwrapRef<T[P]>
+                }
+              : T
+
+/** 检查是否是 ref 变量
  */
 export function isRef<T>(r: Ref<T> | unknown): r is Ref<T>
 export function isRef(r: any): r is Ref {
   return r ? r[ReactiveFlags.IS_REF] === true : false
 }
 
-/**
- * Takes an inner value and returns a reactive and mutable ref object, which
- * has a single property `.value` that points to the inner value.
- *
- * @param value - The object to wrap in the ref.
- * @see {@link https://vuejs.org/api/reactivity-core.html#ref}
+/** 创建 ref 变量
  */
 export function ref<T>(
   value: T,
@@ -60,13 +130,7 @@ export function ref(value?: unknown) {
   return createRef(value, false)
 }
 
-declare const ShallowRefMarker: unique symbol
-
-export type ShallowRef<T = any, S = T> = Ref<T, S> & {
-  [ShallowRefMarker]?: true
-}
-
-/**
+/** 创建 shallowRef 变量
  * Shallow version of {@link ref}.
  *
  * @example
@@ -102,13 +166,11 @@ function createRef(rawValue: unknown, shallow: boolean) {
   return new RefImpl(rawValue, shallow)
 }
 
-/**
- * @internal
- */
 class RefImpl<T = any> {
   _value: T
   private _rawValue: T
 
+  // 响应式变量一一对应的发布者
   dep: Dep = new Dep()
 
   public readonly [ReactiveFlags.IS_REF] = true
@@ -128,6 +190,7 @@ class RefImpl<T = any> {
         key: 'value',
       })
     } else {
+      // 与订阅者建立订阅关系
       this.dep.track()
     }
     return this._value
@@ -152,13 +215,14 @@ class RefImpl<T = any> {
           oldValue,
         })
       } else {
+        // 通知订阅者
         this.dep.trigger()
       }
     }
   }
 }
 
-/**
+/** 强制让 ref 变量通知订阅者
  * Force trigger effects that depends on a shallow ref. This is typically used
  * after making deep mutations to the inner value of a shallow ref.
  *
@@ -199,15 +263,7 @@ export function triggerRef(ref: Ref): void {
   }
 }
 
-export type MaybeRef<T = any> =
-  | T
-  | Ref<T>
-  | ShallowRef<T>
-  | WritableComputedRef<T>
-
-export type MaybeRefOrGetter<T = any> = MaybeRef<T> | ComputedRef<T> | (() => T)
-
-/**
+/** 返回 ref 变量的 value 值
  * Returns the inner value if the argument is a ref, otherwise return the
  * argument itself. This is a sugar function for
  * `val = isRef(val) ? val.value : val`.
@@ -227,7 +283,7 @@ export function unref<T>(ref: MaybeRef<T> | ComputedRef<T>): T {
   return isRef(ref) ? ref.value : ref
 }
 
-/**
+/** 获取ref 变量、getter 函数的值
  * Normalizes values / refs / getters to values.
  * This is similar to {@link unref}, except that it also normalizes getters.
  * If the argument is a getter, it will be invoked and its return value will
@@ -263,7 +319,7 @@ const shallowUnwrapHandlers: ProxyHandler<any> = {
   },
 }
 
-/**
+/** 返回一个代理对象，原始对象的属性值存在 ref 变量
  * Returns a proxy for the given object that shallowly unwraps properties that
  * are refs. If the object already is reactive, it's returned as-is. If not, a
  * new reactive proxy is created.
@@ -279,14 +335,8 @@ export function proxyRefs<T extends object>(
     : new Proxy(objectWithRefs, shallowUnwrapHandlers)
 }
 
-export type CustomRefFactory<T> = (
-  track: () => void,
-  trigger: () => void,
-) => {
-  get: () => T
-  set: (value: T) => void
-}
-
+/** 自定义 ref 对象
+ */
 class CustomRefImpl<T> {
   public dep: Dep
 
@@ -313,7 +363,7 @@ class CustomRefImpl<T> {
   }
 }
 
-/**
+/** 创建自定义 ref 对象
  * Creates a customized ref with explicit control over its dependency tracking
  * and updates triggering.
  *
@@ -324,11 +374,7 @@ export function customRef<T>(factory: CustomRefFactory<T>): Ref<T> {
   return new CustomRefImpl(factory) as any
 }
 
-export type ToRefs<T = any> = {
-  [K in keyof T]: ToRef<T[K]>
-}
-
-/**
+/** 将响应式对象转为普通对象，普通对象属性值转为 ref 变量
  * Converts a reactive object to a plain object where each property of the
  * resulting object is a ref pointing to the corresponding property of the
  * original object. Each individual ref is created using {@link toRef}.
@@ -371,6 +417,21 @@ class ObjectRefImpl<T extends object, K extends keyof T> {
   }
 }
 
+/** 响应式对象属性值转变成的 ref 变量
+ */
+function propertyToRef(
+  source: Record<string, any>,
+  key: string,
+  defaultValue?: unknown,
+) {
+  const val = source[key]
+  return isRef(val)
+    ? val
+    : (new ObjectRefImpl(source, key, defaultValue) as any)
+}
+
+/** 将 getter 函数转为 ref 对象
+ */
 class GetterRefImpl<T> {
   public readonly [ReactiveFlags.IS_REF] = true
   public readonly [ReactiveFlags.IS_READONLY] = true
@@ -381,8 +442,6 @@ class GetterRefImpl<T> {
     return (this._value = this._getter())
   }
 }
-
-export type ToRef<T> = IfAny<T, Ref<T>, [T] extends [Ref] ? T : Ref<T>>
 
 /**
  * Used to normalize values / refs / getters into refs.
@@ -458,65 +517,3 @@ export function toRef(
     return ref(source)
   }
 }
-
-function propertyToRef(
-  source: Record<string, any>,
-  key: string,
-  defaultValue?: unknown,
-) {
-  const val = source[key]
-  return isRef(val)
-    ? val
-    : (new ObjectRefImpl(source, key, defaultValue) as any)
-}
-
-/**
- * This is a special exported interface for other packages to declare
- * additional types that should bail out for ref unwrapping. For example
- * \@vue/runtime-dom can declare it like so in its d.ts:
- *
- * ``` ts
- * declare module '@vue/reactivity' {
- *   export interface RefUnwrapBailTypes {
- *     runtimeDOMBailTypes: Node | Window
- *   }
- * }
- * ```
- */
-export interface RefUnwrapBailTypes {}
-
-export type ShallowUnwrapRef<T> = {
-  [K in keyof T]: DistributeRef<T[K]>
-}
-
-type DistributeRef<T> = T extends Ref<infer V, unknown> ? V : T
-
-export type UnwrapRef<T> =
-  T extends ShallowRef<infer V, unknown>
-    ? V
-    : T extends Ref<infer V, unknown>
-      ? UnwrapRefSimple<V>
-      : UnwrapRefSimple<T>
-
-export type UnwrapRefSimple<T> = T extends
-  | Builtin
-  | Ref
-  | RefUnwrapBailTypes[keyof RefUnwrapBailTypes]
-  | { [RawSymbol]?: true }
-  ? T
-  : T extends Map<infer K, infer V>
-    ? Map<K, UnwrapRefSimple<V>> & UnwrapRef<Omit<T, keyof Map<any, any>>>
-    : T extends WeakMap<infer K, infer V>
-      ? WeakMap<K, UnwrapRefSimple<V>> &
-          UnwrapRef<Omit<T, keyof WeakMap<any, any>>>
-      : T extends Set<infer V>
-        ? Set<UnwrapRefSimple<V>> & UnwrapRef<Omit<T, keyof Set<any>>>
-        : T extends WeakSet<infer V>
-          ? WeakSet<UnwrapRefSimple<V>> & UnwrapRef<Omit<T, keyof WeakSet<any>>>
-          : T extends ReadonlyArray<any>
-            ? { [K in keyof T]: UnwrapRefSimple<T[K]> }
-            : T extends object & { [ShallowReactiveMarker]?: never }
-              ? {
-                  [P in keyof T]: P extends symbol ? T[P] : UnwrapRef<T[P]>
-                }
-              : T
