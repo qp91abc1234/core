@@ -23,6 +23,8 @@ export interface Target {
   [ReactiveFlags.RAW]?: any
 }
 
+/** 记录原始对象与代理对象间的映射
+ */
 export const reactiveMap: WeakMap<Target, any> = new WeakMap<Target, any>()
 export const shallowReactiveMap: WeakMap<Target, any> = new WeakMap<
   Target,
@@ -33,6 +35,42 @@ export const shallowReadonlyMap: WeakMap<Target, any> = new WeakMap<
   Target,
   any
 >()
+
+// only unwrap nested ref
+export type UnwrapNestedRefs<T> = T extends Ref ? T : UnwrapRefSimple<T>
+
+declare const ReactiveMarkerSymbol: unique symbol
+
+export interface ReactiveMarker {
+  [ReactiveMarkerSymbol]?: void
+}
+
+export type Reactive<T> = UnwrapNestedRefs<T> &
+  (T extends readonly any[] ? ReactiveMarker : {})
+
+type Primitive = string | number | boolean | bigint | symbol | undefined | null
+export type Builtin = Primitive | Function | Date | Error | RegExp
+export type DeepReadonly<T> = T extends Builtin
+  ? T
+  : T extends Map<infer K, infer V>
+    ? ReadonlyMap<DeepReadonly<K>, DeepReadonly<V>>
+    : T extends ReadonlyMap<infer K, infer V>
+      ? ReadonlyMap<DeepReadonly<K>, DeepReadonly<V>>
+      : T extends WeakMap<infer K, infer V>
+        ? WeakMap<DeepReadonly<K>, DeepReadonly<V>>
+        : T extends Set<infer U>
+          ? ReadonlySet<DeepReadonly<U>>
+          : T extends ReadonlySet<infer U>
+            ? ReadonlySet<DeepReadonly<U>>
+            : T extends WeakSet<infer U>
+              ? WeakSet<DeepReadonly<U>>
+              : T extends Promise<infer U>
+                ? Promise<DeepReadonly<U>>
+                : T extends Ref<infer U, unknown>
+                  ? Readonly<Ref<DeepReadonly<U>>>
+                  : T extends {}
+                    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+                    : Readonly<T>
 
 enum TargetType {
   INVALID = 0,
@@ -55,23 +93,14 @@ function targetTypeMap(rawType: string) {
   }
 }
 
+/** 获取原始对象的 TargetType
+ * 用于添加不同的代理回调
+ */
 function getTargetType(value: Target) {
   return value[ReactiveFlags.SKIP] || !Object.isExtensible(value)
     ? TargetType.INVALID
     : targetTypeMap(toRawType(value))
 }
-
-// only unwrap nested ref
-export type UnwrapNestedRefs<T> = T extends Ref ? T : UnwrapRefSimple<T>
-
-declare const ReactiveMarkerSymbol: unique symbol
-
-export interface ReactiveMarker {
-  [ReactiveMarkerSymbol]?: void
-}
-
-export type Reactive<T> = UnwrapNestedRefs<T> &
-  (T extends readonly any[] ? ReactiveMarker : {})
 
 /**
  * Returns a reactive proxy of the object.
@@ -148,30 +177,6 @@ export function shallowReactive<T extends object>(
     shallowReactiveMap,
   )
 }
-
-type Primitive = string | number | boolean | bigint | symbol | undefined | null
-export type Builtin = Primitive | Function | Date | Error | RegExp
-export type DeepReadonly<T> = T extends Builtin
-  ? T
-  : T extends Map<infer K, infer V>
-    ? ReadonlyMap<DeepReadonly<K>, DeepReadonly<V>>
-    : T extends ReadonlyMap<infer K, infer V>
-      ? ReadonlyMap<DeepReadonly<K>, DeepReadonly<V>>
-      : T extends WeakMap<infer K, infer V>
-        ? WeakMap<DeepReadonly<K>, DeepReadonly<V>>
-        : T extends Set<infer U>
-          ? ReadonlySet<DeepReadonly<U>>
-          : T extends ReadonlySet<infer U>
-            ? ReadonlySet<DeepReadonly<U>>
-            : T extends WeakSet<infer U>
-              ? WeakSet<DeepReadonly<U>>
-              : T extends Promise<infer U>
-                ? Promise<DeepReadonly<U>>
-                : T extends Ref<infer U, unknown>
-                  ? Readonly<Ref<DeepReadonly<U>>>
-                  : T extends {}
-                    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
-                    : Readonly<T>
 
 /**
  * Takes an object (reactive or plain) or a ref and returns a readonly proxy to
@@ -254,6 +259,8 @@ export function shallowReadonly<T extends object>(target: T): Readonly<T> {
   )
 }
 
+/** 创建响应式对象
+ */
 function createReactiveObject(
   target: Target,
   isReadonly: boolean,
