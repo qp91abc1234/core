@@ -74,22 +74,22 @@ export interface WatchHandle extends WatchStopHandle {
   stop: () => void
 }
 
-// initial value for watchers to trigger on undefined initial values
-const INITIAL_WATCHER_VALUE = {}
-
 export type WatchScheduler = (job: () => void, isFirstRun: boolean) => void
+
+// 监听器默认初始值
+const INITIAL_WATCHER_VALUE = {}
 
 const cleanupMap: WeakMap<ReactiveEffect, (() => void)[]> = new WeakMap()
 let activeWatcher: ReactiveEffect | undefined = undefined
 
-/**
+/** 获取当前激活的监听器
  * Returns the current active effect if there is one.
  */
 export function getCurrentWatcher(): ReactiveEffect<any> | undefined {
   return activeWatcher
 }
 
-/**
+/** 注册监听器的 cleanup 函数
  * Registers a cleanup callback on the current active effect. This
  * registered cleanup callback will be invoked right before the
  * associated effect re-runs.
@@ -147,9 +147,10 @@ export function watch(
   let getter: () => any
   let cleanup: (() => void) | undefined
   let boundCleanup: typeof onWatcherCleanup
-  let forceTrigger = false
+  let forceTrigger = false // 强制触发回调执行
   let isMultiSource = false
 
+  // 监听目标的规范化处理
   if (isRef(source)) {
     getter = () => source.value
     forceTrigger = isShallow(source)
@@ -178,7 +179,7 @@ export function watch(
         ? () => call(source, WatchErrorCodes.WATCH_GETTER)
         : (source as () => any)
     } else {
-      // no cb -> simple effect
+      // watchEffect: no cb -> simple effect
       getter = () => {
         if (cleanup) {
           pauseTracking()
@@ -210,6 +211,8 @@ export function watch(
     getter = () => traverse(baseGetter(), depth)
   }
 
+  /** 监听器关闭逻辑
+   */
   const scope = getCurrentScope()
   const watchHandle: WatchHandle = () => {
     effect.stop()
@@ -218,6 +221,7 @@ export function watch(
     }
   }
 
+  // 只监听一次，监听完就关闭监听器
   if (once && cb) {
     const _cb = cb
     cb = (...args) => {
@@ -328,6 +332,9 @@ export function watch(
   return watchHandle
 }
 
+/** 遍历监听对象
+ * 让发布者与监听器建立订阅关系
+ */
 export function traverse(
   value: unknown,
   depth: number = Infinity,
