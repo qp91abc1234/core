@@ -25,7 +25,6 @@ export class EffectScope {
   private _isPaused = false
 
   /** 父作用域
-   * 仅在非分离模式下存在
    */
   parent: EffectScope | undefined
   /** 子作用域
