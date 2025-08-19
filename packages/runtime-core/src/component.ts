@@ -604,6 +604,8 @@ const emptyAppContext = createAppContext()
 
 let uid = 0
 
+/** 创建组件实例
+ */
 export function createComponentInstance(
   vnode: VNode,
   parent: ComponentInternalInstance | null,
@@ -799,6 +801,10 @@ export function isStatefulComponent(
 
 export let isInSSRComponentSetup = false
 
+/** 配置组件实例
+ * 初始化 props/slots
+ * 执行 setup 函数
+ */
 export function setupComponent(
   instance: ComponentInternalInstance,
   isSSR = false,

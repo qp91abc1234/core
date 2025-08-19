@@ -6,8 +6,12 @@
  */
 const internalObjectProto = {}
 
+/** 创建内部对象
+ */
 export const createInternalObject = (): any =>
   Object.create(internalObjectProto)
 
+/** 检查是否为内部对象
+ */
 export const isInternalObject = (obj: object): boolean =>
   Object.getPrototypeOf(obj) === internalObjectProto

@@ -91,7 +91,10 @@ function findInsertionIndex(id: number) {
   return start
 }
 
+/** 任务入队
+ */
 export function queueJob(job: SchedulerJob): void {
+  // 通过该标记防止任务重复入队
   if (!(job.flags! & SchedulerJobFlags.QUEUED)) {
     const jobId = getId(job)
     const lastJob = queue[queue.length - 1]
@@ -111,12 +114,17 @@ export function queueJob(job: SchedulerJob): void {
   }
 }
 
+/** 开启微任务
+ * 微任务中执行入队任务
+ */
 function queueFlush() {
   if (!currentFlushPromise) {
     currentFlushPromise = resolvedPromise.then(flushJobs)
   }
 }
 
+/** 任务加入后置等待队列
+ */
 export function queuePostFlushCb(cb: SchedulerJobs): void {
   if (!isArray(cb)) {
     if (activePostFlushCbs && cb.id === -1) {
@@ -134,6 +142,8 @@ export function queuePostFlushCb(cb: SchedulerJobs): void {
   queueFlush()
 }
 
+/** 执行前置任务
+ */
 export function flushPreFlushCbs(
   instance?: ComponentInternalInstance,
   seen?: CountMap,
@@ -165,6 +175,8 @@ export function flushPreFlushCbs(
   }
 }
 
+/** 执行后置任务队列
+ */
 export function flushPostFlushCbs(seen?: CountMap): void {
   if (pendingPostFlushCbs.length) {
     const deduped = [...new Set(pendingPostFlushCbs)].sort(
@@ -206,6 +218,8 @@ export function flushPostFlushCbs(seen?: CountMap): void {
 const getId = (job: SchedulerJob): number =>
   job.id == null ? (job.flags! & SchedulerJobFlags.PRE ? -1 : Infinity) : job.id
 
+/** 执行所有任务队列
+ */
 function flushJobs(seen?: CountMap) {
   if (__DEV__) {
     seen = seen || new Map()

@@ -221,6 +221,9 @@ export type Plugin<
   P extends unknown[] = Options extends unknown[] ? Options : [Options],
 > = FunctionPlugin<P> | ObjectPlugin<P>
 
+/** 应用上下文
+ * 子组件实例也可以访问到
+ */
 export function createAppContext(): AppContext {
   return {
     app: null as any,
@@ -250,6 +253,9 @@ export type CreateAppFunction<HostElement> = (
 
 let uid = 0
 
+/** 返回应用创建函数
+ * 根据不同环境传入不同渲染器
+ */
 export function createAppAPI<HostElement>(
   render: RootRenderFunction<HostElement>,
   hydrate?: RootHydrateFunction,

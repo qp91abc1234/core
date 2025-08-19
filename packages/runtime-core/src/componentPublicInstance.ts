@@ -410,6 +410,8 @@ export const isReservedPrefix = (key: string): key is '_' | '$' =>
 const hasSetupBinding = (state: Data, key: string) =>
   state !== EMPTY_OBJ && !state.__isScriptSetup && hasOwn(state, key)
 
+/** 组件实例的代理回调
+ */
 export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
   get({ _: instance }: ComponentRenderContext, key: string) {
     if (key === ReactiveFlags.SKIP) {

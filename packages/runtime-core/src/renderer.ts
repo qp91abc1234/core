@@ -1592,10 +1592,13 @@ function baseCreateRenderer(
     nextVNode: VNode,
     optimized: boolean,
   ) => {
+    // 新组件 vnode 与组件实例建立联系
     nextVNode.component = instance
     const prevProps = instance.vnode.props
     instance.vnode = nextVNode
     instance.next = null
+
+    // 用新组件 vnode 上的数据更新组件实例
     updateProps(instance, nextVNode.props, prevProps, optimized)
     updateSlots(instance, nextVNode.children, optimized)
 

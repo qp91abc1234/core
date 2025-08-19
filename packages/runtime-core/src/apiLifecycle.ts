@@ -17,6 +17,8 @@ import { LifecycleHooks } from './enums'
 
 export { onActivated, onDeactivated } from './components/KeepAlive'
 
+/** 注册组件生命周期钩子
+ */
 export function injectHook(
   type: LifecycleHooks,
   hook: Function & { __weh?: Function },
